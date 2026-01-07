@@ -1,12 +1,61 @@
-            - name: Configure GitHub Pages
-  uses: actions/configure-pages@v5.0.0
-  with:
-    # Optional static site generator to attempt to configure: "nuxt", "next", "gatsby", or "sveltekit"
-    static_site_generator: # optional
-    # Optional file path to static site generator configuration file
-    generator_config_file: # optional
-    # GitHub token
-    token: # default is ${{ github.token }}
-    # Try to enable Pages for the repository if it is not already enabled. This option requires a token other than `GITHUB_TOKEN` to be provided. In the context of a Personal Access Token, the `repo` scope or Pages write permission is required. In the context of a GitHub App, the `administration:write` and `pages:write` permissions are required.
-    enablement: # optional, default is false
-          
+
+name: Deploy Next.js to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+# GitHub Pages requires these permissions in the workflow
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # For Next.js, make sure next.config.js has { output: 'export' } to generate static files
+      - name: Build
+        run: npm run build
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5.0.0
+        with:
+          static_site_generator: next
+          generator_config_file: ./next.config.js
+          token: ${{ github.token }}
+          enablement: false # set to true only if using a PAT as 'token'
+
+      # The export output should be in 'out' if using output: 'export'
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./out
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
